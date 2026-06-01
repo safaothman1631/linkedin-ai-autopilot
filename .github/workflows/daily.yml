@@ -1,9 +1,10 @@
 name: Daily LinkedIn AI Post
 
 on:
-  schedule:
-    # 09:00 UTC every day. (GitHub may delay scheduled runs 5-30 min at peak times.)
-    - cron: "0 9 * * *"
+  # PAUSED: the daily video schedule is disabled in favour of the image pipeline
+  # (.github/workflows/daily-images.yml). Re-enable by uncommenting the cron below.
+  # schedule:
+  #   - cron: "0 9 * * *"
   workflow_dispatch:
     inputs:
       topic:
