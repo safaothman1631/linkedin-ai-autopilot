@@ -1,49 +1,47 @@
-// card.js — render the precise overlay on top of the (AI or gradient) background.
-// This is the half that guarantees the image EXACTLY matches the post: every
-// headline, bullet, table cell and tag is drawn from the same content object
-// used for the caption. Output: a 1200x1200 PNG (LinkedIn square).
+// card.js — render a premium, chart-rich infographic overlay on the (AI or
+// gradient) background. Glassmorphism panels, gradient accents, Poppins type.
+// Every value is drawn from the same content object used for the caption, so
+// the image exactly matches the post. Output: 1200x1200 PNG (LinkedIn square).
 import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { createCanvas, loadImage, GlobalFonts } from "@napi-rs/canvas";
 
-const W = 1200, H = 1200, PAD = 80;
+const W = 1200, H = 1200, PAD = 76;
+const HERE = path.dirname(fileURLToPath(import.meta.url));
 
-// ---- fonts: register a real family if we can find one, else system default ---
-let FAMILY = "sans-serif";
+// ---- fonts: prefer bundled Poppins, else system ---------------------------
+let POPPINS = false;
+const ALIAS = { xb: "PoppinsXB", b: "PoppinsB", sb: "PoppinsSB", m: "PoppinsM", r: "PoppinsR" };
+const WEIGHT = { xb: "800", b: "700", sb: "600", m: "500", r: "400" };
 (() => {
-  const candidates = [
-    ["/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf", "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf"],
-    ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"],
-    ["/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf", "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"],
-    ["C:/Windows/Fonts/segoeuib.ttf", "C:/Windows/Fonts/segoeui.ttf"],
-    ["C:/Windows/Fonts/arialbd.ttf", "C:/Windows/Fonts/arial.ttf"],
-  ];
-  for (const [bold, reg] of candidates) {
-    try {
-      if (fs.existsSync(bold) && fs.existsSync(reg)) {
-        GlobalFonts.registerFromPath(reg, "Brand");
-        GlobalFonts.registerFromPath(bold, "Brand"); // weight resolved via "bold" keyword
-        FAMILY = "Brand";
-        break;
-      }
-    } catch { /* keep trying */ }
-  }
+  const dir = path.join(HERE, "..", "..", "assets", "fonts");
+  const files = { xb: "Poppins-ExtraBold.ttf", b: "Poppins-Bold.ttf", sb: "Poppins-SemiBold.ttf", m: "Poppins-Medium.ttf", r: "Poppins-Regular.ttf" };
+  try {
+    let n = 0;
+    for (const k of Object.keys(files)) {
+      const p = path.join(dir, files[k]);
+      if (fs.existsSync(p)) { GlobalFonts.registerFromPath(p, ALIAS[k]); n++; }
+    }
+    POPPINS = n === 5;
+  } catch { POPPINS = false; }
 })();
+const fnt = (px, s = "r") => (POPPINS ? `${px}px ${ALIAS[s]}` : `${WEIGHT[s]} ${px}px sans-serif`);
 
-const COLORS = {
-  bg0: "#0B1020", bg1: "#161E36",
-  text: "#F8FAFC", muted: "#9AA7BD", line: "rgba(255,255,255,0.10)",
-  panel: "rgba(255,255,255,0.05)", panelStrong: "rgba(255,255,255,0.08)",
+const C = {
+  text: "#F7FAFF", muted: "#AEBAD0", faint: "#7E8CA8",
+  border: "rgba(255,255,255,0.10)", hi: "rgba(255,255,255,0.06)",
+  panel: "rgba(15,21,38,0.52)", track: "rgba(255,255,255,0.09)",
 };
 const ACCENT = {
-  claude: { a: "#8B7CF6", soft: "rgba(139,124,246,0.18)", label: "CLAUDE SKILL" },
-  models: { a: "#22D3EE", soft: "rgba(34,211,238,0.16)", label: "MODEL FACE-OFF" },
-  erp: { a: "#34D399", soft: "rgba(52,211,153,0.16)", label: "ERPIQ DEEP-DIVE" },
+  claude: { a: "#8B7CF6", b: "#6366F1", soft: "rgba(139,124,246,0.16)", label: "CLAUDE SKILL" },
+  models: { a: "#22D3EE", b: "#3B82F6", soft: "rgba(34,211,238,0.14)", label: "MODEL FACE-OFF" },
+  erp: { a: "#34D399", b: "#14B8A6", soft: "rgba(52,211,153,0.14)", label: "ERPIQ DEEP-DIVE" },
 };
-
-const font = (px, weight = "") => `${weight} ${px}px ${FAMILY}`.trim();
+const SERIES = [["#7DD3FC", "#2563EB"], ["#6EE7B7", "#10B981"], ["#FCD34D", "#F59E0B"]];
 
 function roundRect(ctx, x, y, w, h, r) {
-  const rr = Math.min(r, w / 2, h / 2);
+  const rr = Math.max(0, Math.min(r, w / 2, h / 2));
   ctx.beginPath();
   ctx.moveTo(x + rr, y);
   ctx.arcTo(x + w, y, x + w, y + h, rr);
@@ -52,33 +50,32 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.arcTo(x, y, x + w, y, rr);
   ctx.closePath();
 }
+const lg = (ctx, x0, y0, x1, y1, c0, c1) => { const g = ctx.createLinearGradient(x0, y0, x1, y1); g.addColorStop(0, c0); g.addColorStop(1, c1); return g; };
+
+function panel(ctx, x, y, w, h, r = 18, fill = C.panel) {
+  ctx.save();
+  ctx.shadowColor = "rgba(0,0,0,0.45)"; ctx.shadowBlur = 22; ctx.shadowOffsetY = 9;
+  roundRect(ctx, x, y, w, h, r); ctx.fillStyle = fill; ctx.fill();
+  ctx.restore();
+  roundRect(ctx, x, y, w, h, r); ctx.lineWidth = 1.5; ctx.strokeStyle = C.border; ctx.stroke();
+  roundRect(ctx, x + 1.5, y + 1.5, w - 3, h - 3, r - 1); ctx.lineWidth = 1; ctx.strokeStyle = C.hi; ctx.stroke();
+}
 
 function wrap(ctx, text, maxW) {
   const words = String(text || "").split(/\s+/).filter(Boolean);
-  const lines = [];
-  let line = "";
+  const lines = []; let line = "";
   for (const w of words) {
-    const test = line ? `${line} ${w}` : w;
-    if (ctx.measureText(test).width > maxW && line) { lines.push(line); line = w; }
-    else line = test;
+    const t = line ? `${line} ${w}` : w;
+    if (ctx.measureText(t).width > maxW && line) { lines.push(line); line = w; } else line = t;
   }
   if (line) lines.push(line);
   return lines;
 }
-
-// shrink font until the text fits in <= maxLines
-function fitLines(ctx, text, maxW, startPx, minPx, maxLines, weight = "bold") {
+function fitLines(ctx, text, maxW, startPx, minPx, maxLines, style = "b") {
   let px = startPx;
-  while (px > minPx) {
-    ctx.font = font(px, weight);
-    const lines = wrap(ctx, text, maxW);
-    if (lines.length <= maxLines) return { lines, px };
-    px -= 3;
-  }
-  ctx.font = font(minPx, weight);
-  return { lines: wrap(ctx, text, maxW).slice(0, maxLines), px: minPx };
+  while (px > minPx) { ctx.font = fnt(px, style); const l = wrap(ctx, text, maxW); if (l.length <= maxLines) return { lines: l, px }; px -= 3; }
+  ctx.font = fnt(minPx, style); return { lines: wrap(ctx, text, maxW).slice(0, maxLines), px: minPx };
 }
-
 function ellipsize(ctx, text, maxW) {
   let t = String(text || "");
   if (ctx.measureText(t).width <= maxW) return t;
@@ -86,197 +83,202 @@ function ellipsize(ctx, text, maxW) {
   return t + "…";
 }
 
+// ---- background + frame ---------------------------------------------------
 function drawBackground(ctx, bgImg, accent) {
-  // base gradient (also the fallback when no AI image)
-  const g = ctx.createLinearGradient(0, 0, W, H);
-  g.addColorStop(0, COLORS.bg0); g.addColorStop(1, COLORS.bg1);
-  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-
+  ctx.fillStyle = lg(ctx, 0, 0, W, H, "#0A0E1B", "#141C32"); ctx.fillRect(0, 0, W, H);
   if (bgImg) {
     const s = Math.max(W / bgImg.width, H / bgImg.height);
     const dw = bgImg.width * s, dh = bgImg.height * s;
     ctx.drawImage(bgImg, (W - dw) / 2, (H - dh) / 2, dw, dh);
-    // darken so overlaid text stays readable
     const sc = ctx.createLinearGradient(0, 0, 0, H);
-    sc.addColorStop(0, "rgba(8,11,22,0.62)");
-    sc.addColorStop(0.55, "rgba(8,11,22,0.72)");
-    sc.addColorStop(1, "rgba(8,11,22,0.90)");
+    sc.addColorStop(0, "rgba(8,11,22,0.58)"); sc.addColorStop(0.5, "rgba(8,11,22,0.70)"); sc.addColorStop(1, "rgba(8,11,22,0.90)");
     ctx.fillStyle = sc; ctx.fillRect(0, 0, W, H);
   } else {
-    // procedural accent glow for the gradient-only path
-    const rg = ctx.createRadialGradient(W * 0.82, H * 0.12, 40, W * 0.82, H * 0.12, 720);
-    rg.addColorStop(0, accent.soft); rg.addColorStop(1, "rgba(0,0,0,0)");
-    ctx.fillStyle = rg; ctx.fillRect(0, 0, W, H);
+    const rg = ctx.createRadialGradient(W * 0.84, H * 0.08, 40, W * 0.84, H * 0.08, 800);
+    rg.addColorStop(0, accent.soft); rg.addColorStop(1, "rgba(0,0,0,0)"); ctx.fillStyle = rg; ctx.fillRect(0, 0, W, H);
   }
-  // thin accent rule top
-  ctx.fillStyle = accent.a; ctx.fillRect(0, 0, W, 8);
+  // vignette for focus
+  const v = ctx.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, H * 0.75);
+  v.addColorStop(0, "rgba(0,0,0,0)"); v.addColorStop(1, "rgba(0,0,0,0.40)"); ctx.fillStyle = v; ctx.fillRect(0, 0, W, H);
+  // gradient top bar
+  ctx.fillStyle = lg(ctx, 0, 0, W, 0, accent.a, accent.b); ctx.fillRect(0, 0, W, 7);
 }
-
-function drawHeader(ctx, accent, brand) {
-  const y = PAD, h = 46;
-  // pillar pill
-  ctx.font = font(22, "bold");
-  const label = accent.label;
-  const tw = ctx.measureText(label).width;
-  const pw = tw + 56;
-  ctx.fillStyle = accent.soft; roundRect(ctx, PAD, y, pw, h, 23); ctx.fill();
-  ctx.fillStyle = accent.a; ctx.beginPath(); ctx.arc(PAD + 26, y + h / 2, 6, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = COLORS.text; ctx.textBaseline = "middle"; ctx.textAlign = "left";
-  ctx.fillText(label, PAD + 42, y + h / 2 + 1);
-  // date right
+function drawHeader(ctx, accent) {
+  const y = PAD - 8, h = 48;
+  ctx.font = fnt(21, "b");
+  const label = accent.label, tw = ctx.measureText(label).width, pw = tw + 60;
+  panel(ctx, PAD, y, pw, h, 24, accent.soft);
+  ctx.fillStyle = lg(ctx, PAD + 20, y, PAD + 34, y + h, accent.a, accent.b);
+  ctx.beginPath(); ctx.arc(PAD + 28, y + h / 2, 6, 0, 7); ctx.fill();
+  ctx.fillStyle = C.text; ctx.textBaseline = "middle"; ctx.textAlign = "left";
+  ctx.fillText(label, PAD + 46, y + h / 2 + 1);
   const date = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
-  ctx.font = font(22, ""); ctx.fillStyle = COLORS.muted; ctx.textAlign = "right";
-  ctx.fillText(date, W - PAD, y + h / 2 + 1);
-  ctx.textAlign = "left";
-  return y + h;
+  ctx.font = fnt(21, "m"); ctx.fillStyle = C.muted; ctx.textAlign = "right";
+  ctx.fillText(date, W - PAD, y + h / 2 + 1); ctx.textAlign = "left";
+  return y + h + 10;
 }
-
 function drawTitle(ctx, content, accent, topY) {
-  let y = topY + 56;
-  ctx.fillStyle = COLORS.text; ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
-  const { lines, px } = fitLines(ctx, content.headline, W - 2 * PAD, 78, 46, 2, "bold");
-  ctx.font = font(px, "bold");
-  for (const ln of lines) { y += px; ctx.fillText(ln, PAD, y); y += 12; }
+  let y = topY + 42;
+  ctx.fillStyle = C.text; ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
+  const { lines, px } = fitLines(ctx, content.headline, W - 2 * PAD, 76, 44, 2, "xb");
+  ctx.font = fnt(px, "xb");
+  for (const ln of lines) { y += px; ctx.fillText(ln, PAD, y); y += 10; }
   if (content.subhead) {
-    y += 34; ctx.font = font(30, "bold"); ctx.fillStyle = accent.a;
-    ctx.fillText(ellipsize(ctx, content.subhead, W - 2 * PAD), PAD, y);
-    y += 6;
+    y += 30; ctx.font = fnt(27, "sb"); ctx.fillStyle = accent.a;
+    ctx.fillText(ellipsize(ctx, content.subhead, W - 2 * PAD), PAD, y); y += 6;
   }
-  // divider
-  y += 26; ctx.strokeStyle = COLORS.line; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(PAD, y); ctx.lineTo(W - PAD, y); ctx.stroke();
-  return y;
+  y += 22; ctx.fillStyle = lg(ctx, PAD, 0, PAD + 120, 0, accent.a, accent.b);
+  roundRect(ctx, PAD, y, 96, 4, 2); ctx.fill();
+  ctx.fillStyle = C.border; roundRect(ctx, PAD + 104, y, W - PAD - (PAD + 104), 4, 2); ctx.fill();
+  return y + 4;
 }
-
 function drawFooter(ctx, accent, note, brand) {
-  const y = H - 64;
-  ctx.strokeStyle = COLORS.line; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(PAD, y - 26); ctx.lineTo(W - PAD, y - 26); ctx.stroke();
+  const y = H - 58;
+  ctx.fillStyle = C.border; roundRect(ctx, PAD, y - 28, W - 2 * PAD, 2, 1); ctx.fill();
   ctx.textBaseline = "middle";
-  const handle = (brand && brand.handle) || "";
-  ctx.font = font(24, "bold"); ctx.fillStyle = COLORS.text; ctx.textAlign = "left";
-  if (handle) ctx.fillText(handle, PAD, y);
-  ctx.font = font(22, ""); ctx.fillStyle = COLORS.muted; ctx.textAlign = "right";
-  if (note) ctx.fillText(note, W - PAD, y);
+  const handle = (brand && brand.handle) || (brand && brand.tagline) || "AI · Engineering · ERPIQ";
+  ctx.font = fnt(22, "b"); ctx.fillStyle = C.text; ctx.textAlign = "left"; ctx.fillText(handle, PAD, y);
+  ctx.font = fnt(19, "b");
+  const cta = "Follow for more  →", cw = ctx.measureText(cta).width + 40;
+  ctx.fillStyle = lg(ctx, W - PAD - cw, y, W - PAD, y, accent.a, accent.b);
+  roundRect(ctx, W - PAD - cw, y - 21, cw, 42, 21); ctx.fill();
+  ctx.fillStyle = "#0A0E1B"; ctx.textAlign = "center"; ctx.fillText(cta, W - PAD - cw / 2, y + 1);
+  if (note) { ctx.font = fnt(17, "m"); ctx.fillStyle = C.faint; ctx.textAlign = "center"; ctx.fillText(note, W / 2, H - 16); }
   ctx.textAlign = "left";
 }
 
-// ---- pillar bodies ----------------------------------------------------------
-function bodyClaude(ctx, c, accent, topY) {
-  let y = topY + 40;
-  const items = (c.capabilities || []).slice(0, 4);
-  const rowH = 118, x = PAD;
-  for (let i = 0; i < items.length; i++) {
-    const it = items[i] || {};
-    const ry = y + i * rowH;
-    ctx.fillStyle = COLORS.panel; roundRect(ctx, x, ry, W - 2 * PAD, rowH - 16, 18); ctx.fill();
-    // index chip
-    ctx.fillStyle = accent.soft; roundRect(ctx, x + 18, ry + 22, 56, 56, 14); ctx.fill();
-    ctx.fillStyle = accent.a; ctx.font = font(30, "bold"); ctx.textBaseline = "middle"; ctx.textAlign = "center";
-    ctx.fillText(String(i + 1), x + 18 + 28, ry + 22 + 29);
-    ctx.textAlign = "left";
-    const tx = x + 100, tw = W - 2 * PAD - 120;
-    ctx.fillStyle = COLORS.text; ctx.font = font(30, "bold");
-    ctx.fillText(ellipsize(ctx, it.label || "", tw), tx, ry + 42);
-    ctx.fillStyle = COLORS.muted; ctx.font = font(24, "");
-    ctx.fillText(ellipsize(ctx, it.detail || "", tw), tx, ry + 78);
-  }
-  y += items.length * rowH + 6;
-  // flow chips
-  drawChipRow(ctx, "HOW IT WORKS", c.flow || [], accent, y, "→");
+// ---- infographic primitives ----------------------------------------------
+function badge(ctx, x, y, d, accent, label, style = "b") {
+  ctx.fillStyle = lg(ctx, x, y, x + d, y + d, accent.a, accent.b);
+  roundRect(ctx, x, y, d, d, d * 0.32); ctx.fill();
+  ctx.fillStyle = "#0A0E1B"; ctx.font = fnt(d * 0.5, "xb"); ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText(label, x + d / 2, y + d / 2 + 1); ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
 }
-
-function bodyErp(ctx, c, accent, topY) {
-  let y = topY + 40;
-  const items = (c.features || []).slice(0, 4);
-  const rowH = 112, x = PAD;
-  for (let i = 0; i < items.length; i++) {
-    const it = items[i] || {};
-    const ry = y + i * rowH;
-    ctx.fillStyle = COLORS.panel; roundRect(ctx, x, ry, W - 2 * PAD, rowH - 16, 18); ctx.fill();
-    // accent tick
-    ctx.fillStyle = accent.a; roundRect(ctx, x + 18, ry + 24, 8, rowH - 64, 4); ctx.fill();
-    const tx = x + 50, tw = W - 2 * PAD - 70;
-    ctx.fillStyle = COLORS.text; ctx.font = font(30, "bold"); ctx.textBaseline = "alphabetic";
-    ctx.fillText(ellipsize(ctx, it.label || "", tw), tx, ry + 44);
-    ctx.fillStyle = COLORS.muted; ctx.font = font(24, "");
-    ctx.fillText(ellipsize(ctx, it.detail || "", tw), tx, ry + 78);
-  }
-  y += items.length * rowH + 6;
-  drawChipRow(ctx, "STACK", c.stackChips || [], accent, y, null);
-  if (c.metric) {
-    ctx.font = font(24, "bold"); ctx.fillStyle = accent.a; ctx.textBaseline = "alphabetic";
-    ctx.fillText(ellipsize(ctx, c.metric, W - 2 * PAD), PAD, y + 92);
-  }
-}
-
-function bodyModels(ctx, c, accent, topY) {
-  const x = PAD, fullW = W - 2 * PAD;
-  const axisW = 300, colW = (fullW - axisW) / 3;
-  const rows = (c.table || []).slice(0, 5);
-  const headH = 78;
-  const bottomLimit = H - 150; // leave room for verdict + footer
-  let y = topY + 28;
-  const rowH = Math.max(58, Math.min(86, (bottomLimit - y - headH) / Math.max(rows.length, 1)));
-
-  // header: model names
-  for (let j = 0; j < 3; j++) {
-    const cx = x + axisW + j * colW;
-    ctx.fillStyle = accent.soft; roundRect(ctx, cx + 6, y, colW - 12, headH - 10, 14); ctx.fill();
-    ctx.fillStyle = COLORS.text; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    const name = (c.models || [])[j] || "—";
-    const { lines, px } = fitLines(ctx, name, colW - 28, 25, 17, 2, "bold");
-    ctx.font = font(px, "bold");
-    const startY = y + (headH - 10) / 2 - ((lines.length - 1) * (px + 2)) / 2;
-    lines.forEach((ln, k) => ctx.fillText(ln, cx + colW / 2, startY + k * (px + 2)));
-  }
-  ctx.textAlign = "left";
-  let ry = y + headH;
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
-    if (i % 2 === 0) { ctx.fillStyle = COLORS.panel; roundRect(ctx, x, ry, fullW, rowH - 8, 12); ctx.fill(); }
-    // axis label
-    ctx.fillStyle = COLORS.muted; ctx.font = font(23, "bold"); ctx.textBaseline = "middle"; ctx.textAlign = "left";
-    ctx.fillText(ellipsize(ctx, row.axis, axisW - 24), x + 18, ry + (rowH - 8) / 2);
-    // cells
-    ctx.textAlign = "center";
-    for (let j = 0; j < 3; j++) {
-      const cx = x + axisW + j * colW;
-      ctx.fillStyle = COLORS.text; ctx.font = font(24, "");
-      ctx.fillText(ellipsize(ctx, (row.cells || [])[j] ?? "—", colW - 20), cx + colW / 2, ry + (rowH - 8) / 2);
-    }
-    ctx.textAlign = "left";
-    ry += rowH;
-  }
-  // verdict band
-  if (c.verdict) {
-    const vy = ry + 14;
-    ctx.fillStyle = accent.soft; roundRect(ctx, x, vy, fullW, 70, 16); ctx.fill();
-    ctx.fillStyle = accent.a; ctx.font = font(22, "bold"); ctx.textBaseline = "middle";
-    ctx.fillText("VERDICT", x + 22, vy + 35);
-    ctx.fillStyle = COLORS.text; ctx.font = font(24, "bold");
-    const vx = x + 22 + ctx.measureText("VERDICT").width + 24;
-    ctx.fillText(ellipsize(ctx, c.verdict, fullW - (vx - x) - 22), vx, vy + 35);
-  }
-}
-
-function drawChipRow(ctx, label, items, accent, y, sep) {
-  if (!items || !items.length) return;
-  ctx.font = font(20, "bold"); ctx.fillStyle = COLORS.muted; ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
-  ctx.fillText(label, PAD, y + 18);
-  let cx = PAD, cy = y + 36;
-  ctx.font = font(22, "bold");
-  items.slice(0, 5).forEach((raw, i) => {
-    const t = String(raw || "").trim(); if (!t) return;
-    const tw = ctx.measureText(t).width, cw = tw + 34;
-    if (cx + cw > W - PAD) return; // keep to one row
-    ctx.fillStyle = accent.soft; roundRect(ctx, cx, cy, cw, 44, 22); ctx.fill();
-    ctx.fillStyle = COLORS.text; ctx.fillText(t, cx + 17, cy + 29);
-    cx += cw + 14;
-    if (sep && i < items.length - 1 && cx + 24 < W - PAD) {
-      ctx.fillStyle = accent.a; ctx.fillText(sep, cx - 2, cy + 29); cx += 24;
-    }
+function statTiles(ctx, stats, accent, y) {
+  const items = (stats || []).slice(0, 3); if (!items.length) return y;
+  const gap = 18, fullW = W - 2 * PAD, tw = (fullW - gap * 2) / 3, th = 128;
+  items.forEach((s, i) => {
+    const x = PAD + i * (tw + gap);
+    panel(ctx, x, y, tw, th, 18);
+    ctx.fillStyle = lg(ctx, x, y, x, y + th, accent.a, accent.b); roundRect(ctx, x, y + 14, 6, th - 28, 3); ctx.fill();
+    ctx.textAlign = "left"; ctx.fillStyle = C.text;
+    const { lines, px } = fitLines(ctx, s.value || "", tw - 50, 40, 19, 1, "xb");
+    ctx.font = fnt(px, "xb"); ctx.textBaseline = "alphabetic";
+    ctx.fillText(ellipsize(ctx, lines[0] || "", tw - 50), x + 26, y + 66);
+    ctx.font = fnt(18, "sb"); ctx.fillStyle = C.muted;
+    ctx.fillText(ellipsize(ctx, (s.label || "").toUpperCase(), tw - 50), x + 26, y + 98);
   });
+  return y + th + 24;
+}
+function featureGrid(ctx, items, accent, y, rowH) {
+  const list = (items || []).slice(0, 4);
+  const gap = 18, cw = (W - 2 * PAD - gap) / 2;
+  list.forEach((it, i) => {
+    const col = i % 2, row = Math.floor(i / 2);
+    const x = PAD + col * (cw + gap), cy = y + row * (rowH + gap);
+    panel(ctx, x, cy, cw, rowH, 18);
+    badge(ctx, x + 20, cy + 20, 42, accent, String(i + 1));
+    ctx.fillStyle = C.text; ctx.font = fnt(24, "b"); ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
+    ctx.fillText(ellipsize(ctx, it.label || "", cw - 96), x + 78, cy + 40);
+    ctx.fillStyle = C.muted; ctx.font = fnt(19, "m");
+    wrap(ctx, it.detail || "", cw - 44).slice(0, 2).forEach((ln, k) => ctx.fillText(ln, x + 24, cy + 74 + k * 25));
+  });
+  return y + 2 * rowH + gap + 24;
+}
+function flowStrip(ctx, label, steps, accent, y) {
+  const list = (steps || []).slice(0, 4); if (!list.length) return y;
+  ctx.font = fnt(18, "b"); ctx.fillStyle = C.faint; ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
+  ctx.fillText(label.toUpperCase(), PAD, y + 16);
+  let x = PAD; const cy = y + 30, h = 46; ctx.font = fnt(20, "sb");
+  list.forEach((raw, i) => {
+    const t = String(raw || "").trim(); if (!t) return;
+    const cw = ctx.measureText(t).width + 38; if (x + cw > W - PAD) return;
+    panel(ctx, x, cy, cw, h, 23);
+    ctx.fillStyle = C.text; ctx.textBaseline = "middle"; ctx.textAlign = "left"; ctx.fillText(t, x + 19, cy + h / 2 + 1);
+    x += cw;
+    if (i < list.length - 1 && x + 32 < W - PAD) { ctx.fillStyle = accent.a; ctx.font = fnt(22, "b"); ctx.fillText("→", x + 7, cy + h / 2 + 1); ctx.font = fnt(20, "sb"); x += 34; }
+  });
+  ctx.textBaseline = "alphabetic";
+  return cy + h + 22;
+}
+function chipRow(ctx, label, items, accent, y) {
+  const list = (items || []).slice(0, 6); if (!list.length) return y;
+  ctx.font = fnt(18, "b"); ctx.fillStyle = C.faint; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+  ctx.fillText(label.toUpperCase(), PAD, y + 16);
+  let x = PAD; const cy = y + 28, h = 44; ctx.font = fnt(20, "sb");
+  for (const raw of list) {
+    const t = String(raw || "").trim(); if (!t) continue;
+    const cw = ctx.measureText(t).width + 34; if (x + cw > W - PAD) break;
+    ctx.fillStyle = accent.soft; roundRect(ctx, x, cy, cw, h, 14); ctx.fill();
+    ctx.strokeStyle = C.border; ctx.lineWidth = 1; roundRect(ctx, x, cy, cw, h, 14); ctx.stroke();
+    ctx.fillStyle = C.text; ctx.textBaseline = "middle"; ctx.fillText(t, x + 17, cy + h / 2 + 1);
+    ctx.textBaseline = "alphabetic"; x += cw + 12;
+  }
+  return cy + h + 20;
+}
+
+// ---- model face-off: legend + gradient score-bar chart --------------------
+function legend(ctx, models, y) {
+  let x = PAD; const cy = y + 14;
+  models.slice(0, 3).forEach((m, i) => {
+    ctx.fillStyle = lg(ctx, x, cy - 7, x + 16, cy + 7, SERIES[i][0], SERIES[i][1]);
+    roundRect(ctx, x, cy - 7, 16, 14, 5); ctx.fill();
+    ctx.fillStyle = C.text; ctx.font = fnt(20, "sb"); ctx.textBaseline = "middle"; ctx.textAlign = "left";
+    const name = ellipsize(ctx, m, 300); ctx.fillText(name, x + 26, cy + 1);
+    x += 26 + ctx.measureText(name).width + 36;
+  });
+  ctx.textBaseline = "alphabetic"; return y + 40;
+}
+function scoreChart(ctx, metrics, y, bottomLimit) {
+  const rows = (metrics || []).slice(0, 5);
+  const axisW = 190, chartX = PAD + axisW + 10, chartW = W - PAD - chartX;
+  const rowH = Math.max(80, Math.min(106, (bottomLimit - y) / Math.max(rows.length, 1)));
+  rows.forEach((row, i) => {
+    const ry = y + i * rowH;
+    ctx.fillStyle = C.muted; ctx.font = fnt(20, "sb"); ctx.textBaseline = "middle"; ctx.textAlign = "left";
+    const al = wrap(ctx, row.axis, axisW - 6).slice(0, 2);
+    al.forEach((ln, k) => ctx.fillText(ln, PAD, ry + rowH / 2 + (k - (al.length - 1) / 2) * 23));
+    const barH = 22, gap = (rowH - 14 - barH * 3) / 2;
+    for (let j = 0; j < 3; j++) {
+      const by = ry + 7 + j * (barH + gap), score = Math.max(0, Math.min(100, (row.scores || [])[j] ?? 50));
+      ctx.fillStyle = C.track; roundRect(ctx, chartX, by, chartW, barH, 11); ctx.fill();
+      const fw = Math.max(barH, chartW * score / 100);
+      ctx.fillStyle = lg(ctx, chartX, by, chartX + fw, by, SERIES[j][0], SERIES[j][1]);
+      roundRect(ctx, chartX, by, fw, barH, 11); ctx.fill();
+      const cell = (row.cells || [])[j] ?? "—";
+      ctx.font = fnt(15, "b"); ctx.textBaseline = "middle";
+      if (ctx.measureText(cell).width <= fw - 18) { ctx.fillStyle = "#0A0E1B"; ctx.textAlign = "left"; ctx.fillText(cell, chartX + 12, by + barH / 2 + 1); }
+      else { ctx.fillStyle = C.muted; ctx.textAlign = "left"; ctx.fillText(ellipsize(ctx, cell, chartW - fw - 14), chartX + fw + 8, by + barH / 2 + 1); }
+    }
+    ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+  });
+  return y + rows.length * rowH + 4;
+}
+
+// ---- pillar bodies --------------------------------------------------------
+function bodyClaude(ctx, c, accent, topY) {
+  let y = statTiles(ctx, c.stats, accent, topY + 26);
+  y = featureGrid(ctx, c.capabilities, accent, y, 126);
+  flowStrip(ctx, "How it works", c.flow, accent, y);
+}
+function bodyErp(ctx, c, accent, topY) {
+  let y = statTiles(ctx, c.stats, accent, topY + 26);
+  y = featureGrid(ctx, c.features, accent, y, 120);
+  y = flowStrip(ctx, "Data flow", c.flow, accent, y);
+  y = chipRow(ctx, "Stack", c.stackChips, accent, y);
+  if (c.metric) { ctx.font = fnt(22, "sb"); ctx.fillStyle = accent.a; ctx.textBaseline = "alphabetic"; ctx.textAlign = "left"; ctx.fillText(ellipsize(ctx, c.metric, W - 2 * PAD), PAD, y + 16); }
+}
+function bodyModels(ctx, c, accent, topY) {
+  let y = legend(ctx, c.models || [], topY + 22);
+  y = scoreChart(ctx, c.metrics, y + 6, H - 196);
+  if (c.verdict) {
+    const vy = y + 12, fullW = W - 2 * PAD;
+    panel(ctx, PAD, vy, fullW, 68, 16, accent.soft);
+    ctx.fillStyle = accent.a; ctx.font = fnt(19, "b"); ctx.textBaseline = "middle"; ctx.textAlign = "left"; ctx.fillText("VERDICT", PAD + 22, vy + 34);
+    const vx = PAD + 22 + ctx.measureText("VERDICT").width + 22;
+    ctx.fillStyle = C.text; ctx.font = fnt(21, "sb"); ctx.fillText(ellipsize(ctx, c.verdict, fullW - (vx - PAD) - 22), vx, vy + 34);
+    ctx.textBaseline = "alphabetic";
+  }
 }
 
 const BODIES = { claude: bodyClaude, models: bodyModels, erp: bodyErp };
@@ -285,20 +287,18 @@ export async function renderCard({ pillar, content, bg, brand, file }) {
   const accent = ACCENT[pillar] || ACCENT.claude;
   const canvas = createCanvas(W, H);
   const ctx = canvas.getContext("2d");
-
   let bgImg = null;
   if (bg) { try { bgImg = await loadImage(bg); } catch { bgImg = null; } }
 
   drawBackground(ctx, bgImg, accent);
-  const afterHeader = drawHeader(ctx, accent, brand);
+  const afterHeader = drawHeader(ctx, accent);
   const afterTitle = drawTitle(ctx, content, accent, afterHeader);
   (BODIES[pillar] || bodyClaude)(ctx, content, accent, afterTitle);
   const note = pillar === "models"
-    ? "As of " + new Date().toLocaleDateString("en-US", { month: "short", year: "numeric", timeZone: "UTC" }) + " · verify specifics"
-    : (brand && brand.tagline) || "";
+    ? "Relative, illustrative scores · as of " + new Date().toLocaleDateString("en-US", { month: "short", year: "numeric", timeZone: "UTC" }) + " · verify specifics"
+    : "";
   drawFooter(ctx, accent, note, brand);
 
-  const out = canvas.toBuffer("image/png");
-  fs.writeFileSync(file, out);
+  fs.writeFileSync(file, canvas.toBuffer("image/png"));
   return file;
 }
