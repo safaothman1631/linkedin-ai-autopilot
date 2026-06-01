@@ -1,10 +1,16 @@
 name: Daily LinkedIn AI Post
 
 on:
-  schedule:
-    # 09:00 UTC every day. (GitHub may delay scheduled runs 5-30 min at peak times.)
-    - cron: "0 9 * * *"
-  workflow_dispatch: {}   # lets you run it manually from the Actions tab
+  # PAUSED: the daily video schedule is disabled in favour of the image pipeline
+  # (.github/workflows/daily-images.yml). Re-enable by uncommenting the cron below.
+  # schedule:
+  #   - cron: "0 9 * * *"
+  workflow_dispatch:
+    inputs:
+      topic:
+        description: "Optional: make ONE video about this exact topic (used by the Telegram bot)"
+        required: false
+        default: ""
 
 concurrency:
   group: daily-post
@@ -13,7 +19,7 @@ concurrency:
 jobs:
   post:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,7 +28,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: "npm"
 
       - name: Install FFmpeg + Chrome libraries
         run: |
@@ -30,7 +35,7 @@ jobs:
           sudo apt-get install -y ffmpeg \
             libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
             libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
-            libgbm1 libpango-1.0-0 libcairo2 libasound2 fonts-liberation
+            libgbm1 libpango-1.0-0 libcairo2 libasound2t64 fonts-liberation fonts-noto-color-emoji
 
       - name: Cache HyperFrames models + browser (Kokoro / Whisper / Chrome)
         uses: actions/cache@v4
@@ -44,9 +49,16 @@ jobs:
       - name: Ensure render browser
         run: npx --yes hyperframes browser ensure || true
 
+      - name: Install Python deps (Kokoro TTS + Whisper word-timing)
+        run: python3 -m pip install --break-system-packages kokoro-onnx soundfile faster-whisper
+
       - name: Generate + post
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          JAMENDO_CLIENT_ID: ${{ secrets.JAMENDO_CLIENT_ID }}
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           LINKEDIN_ACCESS_TOKEN: ${{ secrets.LINKEDIN_ACCESS_TOKEN }}
           LINKEDIN_REFRESH_TOKEN: ${{ secrets.LINKEDIN_REFRESH_TOKEN }}
           LINKEDIN_CLIENT_ID: ${{ secrets.LINKEDIN_CLIENT_ID }}
@@ -57,4 +69,14 @@ jobs:
           POST_MODE: ${{ vars.POST_MODE || 'auto' }}
           TTS_VOICE: ${{ vars.TTS_VOICE || 'af_heart' }}
           BRAND_HANDLE: ${{ vars.BRAND_HANDLE || '' }}
+          VIDEOS_PER_RUN: ${{ vars.VIDEOS_PER_RUN || '3' }}
+          TOPIC: ${{ github.event.inputs.topic }}
         run: node src/run.js
+
+      - name: Upload video artifact (download/preview)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-videos
+          path: video*.mp4
+          if-no-files-found: ignore

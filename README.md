@@ -18,6 +18,27 @@ Telegram (وەرگرتنی ڤیدیۆ)  →  LinkedIn (بڵاوکردنەوە)
 
 ---
 
+## 🖼️ پایپلاینی وێنە (نوێ — ئێستا چالاکە)
+
+دووەم ئۆتۆمەیشن: هەموو ڕۆژێک **٣ پۆستی وێنە + دیسکریپشن** بڵاودەکاتەوە (بە ئینگلیزی، Hybrid: پاشبنەمای AI + دەقی ڕاست لەسەری). هەر ستوونێک کاتی خۆی هەیە بۆ reachی باشتر:
+
+```
+٠٨:٠٠ UTC →  Claude Skill   (هەموو ڕۆژێ سکیڵێکی نوێ، بە قووڵی)
+١٢:٠٠ UTC →  Model Face-off (بەراوردی ٣ مۆدێل، چەرخینەوەی لیست)
+١٦:٠٠ UTC →  ERPIQ Deep-dive(هەموو ڕۆژێ مۆدیوڵێکی ERPـەکەت)
+        ↓
+Gemini (دەق + داتای کارت)  →  AI background  →  کارتی ١٢٠٠×١٢٠٠
+        ↓
+Telegram (پێشبینین)  →  LinkedIn (وێنە + دیسکریپشن)
+```
+
+- **بابەتەکان** لە `src/images/topics.js` (٢٠ Claude skill · ١٠ بەراوردی مۆدێل · ٢٨ مۆدیوڵی ERPIQ). چەرخینەوە خۆکارە — هەر ڕۆژێ یەک بەرەو پێش.
+- **ووۆرکفلۆ:** `.github/workflows/daily-images.yml` (٣ cron). بۆ تاقیکردنەوەی دەستی: تابی Actions → *Daily LinkedIn Image Posts* → Run workflow → `pillar` هەڵبژێرە (`claude`/`models`/`erp`/`all`).
+- **ڤیدیۆکە پشووی پێدراوە:** `daily.yml`ـی scheduleـی لێ داخراوە؛ هێشتا بە دەستی دەکرێت Run بکرێت. بۆ گەڕاندنەوەی، cronـەکەی دووبارە بکەرەوە.
+- **هیچ کلیلی نوێ پێویست نییە** — هەمان GEMINI / LinkedIn / Telegram secrets بەکاردێن.
+
+---
+
 ## ✅ پێش دەستپێکردن — ٤ کلیل پێویستە
 
 | کلیل | لەکوێ بیهێنیت |
@@ -74,9 +95,12 @@ LINKEDIN_PERSON_URN
 
 | ناو | بەها | کارەکەی |
 |-----|------|---------|
-| `POST_MODE` | `auto` / `approve` / `off` | `approve` = تەنها بۆ Telegram بنێرە (بەدەستی پۆست بکە) |
+| `POST_MODE` | `auto` / `approve` / `off` | (ڤیدیۆ) `approve` = تەنها بۆ Telegram بنێرە |
 | `TTS_VOICE` | `af_heart`, `am_adam`, `bf_emma`… | دەنگی ڤیدیۆ |
-| `BRAND_HANDLE` | `@yourname` | لە ژێری ڤیدیۆ پیشان دەدرێت |
+| `BRAND_HANDLE` | `@yourname` | لە ژێری ڤیدیۆ/وێنە پیشان دەدرێت |
+| `IMAGES_POST_MODE` | `auto` / `approve` / `off` | (وێنە) `approve` = تەنها بۆ Telegram |
+| `IMAGE_BG_MODE` | `hybrid` / `gradient` / `ai` | `hybrid` = پاشبنەمای AI + دەقی ڕاست · `gradient` = بەبێ AI |
+| `BRAND_TAGLINE` | `AI · Engineering · ERPIQ` | دێڕی بچووکی ژێری کارت |
 
 **کاتی پۆست بگۆڕە:** لە `.github/workflows/daily.yml` هێڵی `cron: "0 9 * * *"` بگۆڕە (بە UTC).
 
@@ -104,13 +128,21 @@ LINKEDIN_PERSON_URN
 
 ```
 linkedin-ai-autopilot/
-├── .github/workflows/daily.yml   # کاتی ڕۆژانە + کارەکان
+├── .github/workflows/
+│   ├── daily.yml         # ڤیدیۆ (پشوودراو — schedule داخراوە)
+│   └── daily-images.yml  # وێنە: ٣ پۆست/ڕۆژ (چالاک)
 ├── src/
-│   ├── run.js          # ئۆرکێستراتەر
-│   ├── gemini.js       # نووسینی ناوەڕۆک
+│   ├── run.js          # ئۆرکێستراتەری ڤیدیۆ
+│   ├── gemini.js       # نووسینی ناوەڕۆکی ڤیدیۆ
 │   ├── video.js        # HyperFrames: دەنگ + ڤیدیۆ + کاپشن
-│   ├── linkedin.js     # بارکردن و بڵاوکردنەوەی ڤیدیۆ
-│   └── telegram.js     # ئاگادارکردنەوە
+│   ├── linkedin.js     # بڵاوکردنەوەی ڤیدیۆ + وێنە (REST API)
+│   ├── telegram.js     # ئاگادارکردنەوە + sendPhoto
+│   └── images/
+│       ├── run-images.js   # ئۆرکێستراتەری وێنە (٣ ستوون)
+│       ├── topics.js       # چەرخینەوەی بابەتەکان (Claude/Models/ERPIQ)
+│       ├── content.js      # ناوەڕۆکی Gemini بۆ هەر ستوونێک
+│       ├── background.js   # پاشبنەمای AI (Gemini image)
+│       └── card.js         # ڕێندەری کارت ١٢٠٠×١٢٠٠ (napi-rs/canvas)
 ├── tools/get-linkedin-token.js   # هێنانی تۆکن (یەکجار)
 ├── package.json
 ├── .env.example
