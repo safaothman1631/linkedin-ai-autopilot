@@ -48,7 +48,10 @@ async function runOne(pillar, li, results) {
   const name = topic.title || topic.category;
   try {
     const content = await generatePostContent({ pillar, topic, apiKey: env.GEMINI_API_KEY });
-    const bg = await makeBackground({ apiKey: env.GEMINI_API_KEY, prompt: content.imagePrompt, mode: BG_MODE });
+    const bg = await makeBackground({
+      apiKey: env.GEMINI_API_KEY, prompt: content.imagePrompt, mode: BG_MODE,
+      cfAccountId: env.CF_ACCOUNT_ID, cfApiToken: env.CF_API_TOKEN,
+    });
 
     const workdir = fs.mkdtempSync(path.join(os.tmpdir(), `img-${pillar}-`));
     const file = path.join(workdir, `${pillar}.png`);
